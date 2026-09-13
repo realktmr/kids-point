@@ -1,0 +1,12 @@
+{
+  "name": "きっずポイント",
+  "short_name": "きっずポイント",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6fa",
+  "theme_color": "#4a6fa5",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

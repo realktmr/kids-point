@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'">
+<title>きっずポイント</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="きっずポイント">
+<meta name="theme-color" content="#4a6fa5">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 起動時の読み込み -->
+  <section id="screen-loading" class="screen">
+    <p class="loading-text">読み込み中…</p>
+  </section>
+
+  <!-- 子: 名前を選ぶ -->
+  <section id="screen-child-select" class="screen">
+    <h1 class="app-title">きっずポイント</h1>
+    <div id="child-buttons" class="child-buttons"></div>
+    <button type="button" class="link-button" data-nav="parent-login">保護者はこちら</button>
+  </section>
+
+  <!-- 子: PIN 入力 -->
+  <section id="screen-pin" class="screen">
+    <h2 id="pin-child-name" class="screen-title"></h2>
+    <p id="pin-error" class="error-text" hidden></p>
+    <div class="pin-dots" id="pin-dots">
+      <span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span>
+    </div>
+    <div class="keypad">
+      <button type="button" class="key" data-key="1">1</button>
+      <button type="button" class="key" data-key="2">2</button>
+      <button type="button" class="key" data-key="3">3</button>
+      <button type="button" class="key" data-key="4">4</button>
+      <button type="button" class="key" data-key="5">5</button>
+      <button type="button" class="key" data-key="6">6</button>
+      <button type="button" class="key" data-key="7">7</button>
+      <button type="button" class="key" data-key="8">8</button>
+      <button type="button" class="key" data-key="9">9</button>
+      <button type="button" class="key key-sub" data-nav="child-select">戻る</button>
+      <button type="button" class="key" data-key="0">0</button>
+      <button type="button" class="key key-sub" data-key="back">←</button>
+    </div>
+  </section>
+
+  <!-- 親: ログイン -->
+  <section id="screen-parent-login" class="screen">
+    <h2 class="screen-title">保護者ログイン</h2>
+    <form id="parent-login-form" class="form">
+      <label>ログインID<input type="text" id="parent-login-id" autocomplete="username" required></label>
+      <label>パスワード<input type="password" id="parent-login-password" autocomplete="current-password" required></label>
+      <p id="parent-login-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">ログイン</button>
+    </form>
+    <button type="button" class="link-button" data-nav="child-select">子供はこちら</button>
+  </section>
+
+  <!-- 子: ホーム -->
+  <section id="screen-child-home" class="screen">
+    <header class="home-header">
+      <span id="child-home-name" class="home-name"></span>
+      <button type="button" class="icon-button" data-nav="child-requests">申請一覧<span id="child-badge" class="badge" hidden></span></button>
+      <button type="button" class="icon-button" data-action="logout">ログアウト</button>
+    </header>
+    <div class="balance-card">
+      <div class="balance-value"><span id="child-balance">0</span>P</div>
+      <div class="balance-yen">（<span id="child-balance-yen">0</span>円相当）</div>
+    </div>
+    <div id="child-calendar" class="calendar-wrap"></div>
+    <div class="action-row">
+      <button type="button" class="primary-button" data-nav="child-earn">やったよ申請</button>
+      <button type="button" class="secondary-button" data-nav="child-use">つかう申請</button>
+    </div>
+  </section>
+
+  <!-- 子: やったよ申請 -->
+  <section id="screen-child-earn" class="screen">
+    <h2 class="screen-title">やったよ申請</h2>
+    <form id="earn-form" class="form">
+      <label>できたこと
+        <select id="earn-item" required></select>
+      </label>
+      <label>行った日
+        <input type="date" id="earn-date" required>
+      </label>
+      <label>ひとこと（任意）
+        <textarea id="earn-memo" maxlength="500"></textarea>
+      </label>
+      <p id="earn-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">申請する</button>
+      <button type="button" class="secondary-button" data-nav="child-home">もどる</button>
+    </form>
+  </section>
+
+  <!-- 子: つかう申請 -->
+  <section id="screen-child-use" class="screen">
+    <h2 class="screen-title">つかう申請</h2>
+    <p>使えるポイント: <span id="use-available">0</span>P</p>
+    <form id="use-form" class="form">
+      <label>使うポイント
+        <input type="number" id="use-points" min="1" step="1" required>
+      </label>
+      <p>＝ <span id="use-yen">0</span>円</p>
+      <label>ひとこと（任意）
+        <textarea id="use-memo" maxlength="500"></textarea>
+      </label>
+      <p id="use-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">申請する</button>
+      <button type="button" class="secondary-button" data-nav="child-home">もどる</button>
+    </form>
+  </section>
+
+  <!-- 子: 申請一覧 -->
+  <section id="screen-child-requests" class="screen">
+    <h2 class="screen-title">申請一覧</h2>
+    <div id="child-requests-list" class="entry-list"></div>
+    <button type="button" class="secondary-button" data-nav="child-home">もどる</button>
+  </section>
+
+  <!-- 親: ホーム（承認待ち・子選択） -->
+  <section id="screen-parent-home" class="screen">
+    <header class="home-header">
+      <span class="home-name">保護者メニュー</span>
+      <button type="button" class="icon-button" data-action="logout">ログアウト</button>
+    </header>
+    <nav class="parent-nav">
+      <button type="button" class="nav-button" data-nav="parent-approvals">承認待ち<span id="parent-badge" class="badge" hidden></span></button>
+      <button type="button" class="nav-button" data-nav="parent-calendar">カレンダー</button>
+      <button type="button" class="nav-button" data-nav="parent-search">検索</button>
+      <button type="button" class="nav-button" data-nav="parent-direct-add">直接付ける</button>
+      <button type="button" class="nav-button" data-nav="parent-items">項目の管理</button>
+      <button type="button" class="nav-button" data-nav="parent-settings">レート設定</button>
+      <button type="button" class="nav-button" data-nav="parent-accounts">アカウントの管理</button>
+    </nav>
+  </section>
+
+  <!-- 親: 検索 -->
+  <section id="screen-parent-search" class="screen">
+    <h2 class="screen-title">検索</h2>
+    <form id="search-form" class="form">
+      <label>キーワード
+        <input type="search" id="search-query" enterkeyhint="search" maxlength="100" placeholder="例: 実力テスト">
+      </label>
+      <label>子供
+        <select id="search-child-select">
+          <option value="">全員</option>
+        </select>
+      </label>
+      <p id="search-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">検索</button>
+    </form>
+    <div id="search-summary" class="calendar-summary"></div>
+    <div id="search-results" class="entry-list"></div>
+    <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>
+  </section>
+
+  <!-- 親: 承認待ち -->
+  <section id="screen-parent-approvals" class="screen">
+    <h2 class="screen-title">承認待ち</h2>
+    <div id="approvals-list" class="entry-list"></div>
+    <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>
+  </section>
+
+  <!-- 親: 子供ごとのカレンダー -->
+  <section id="screen-parent-calendar" class="screen">
+    <h2 class="screen-title">カレンダー</h2>
+    <label>子供
+      <select id="calendar-child-select"></select>
+    </label>
+    <div class="balance-card">
+      <div class="balance-value"><span id="parent-cal-balance">0</span>P</div>
+      <div class="balance-yen">（<span id="parent-cal-balance-yen">0</span>円相当）</div>
+    </div>
+    <div id="parent-calendar" class="calendar-wrap"></div>
+    <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>
+  </section>
+
+  <!-- 親: 直接付ける -->
+  <section id="screen-parent-direct-add" class="screen">
+    <h2 class="screen-title">直接付ける</h2>
+    <form id="direct-add-form" class="form">
+      <label>子供
+        <select id="direct-child-select" required></select>
+      </label>
+      <label>項目から選ぶ（任意）
+        <select id="direct-item-select">
+          <option value="">－ 手入力する －</option>
+        </select>
+      </label>
+      <label>点数（手入力する場合）
+        <input type="number" id="direct-points" step="1">
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="direct-carryover">
+        引き継ぎ（繰越）として付ける（手入力の点数のときだけ）
+      </label>
+      <label>理由・メモ
+        <input type="text" id="direct-memo" maxlength="500">
+      </label>
+      <label>日付
+        <input type="date" id="direct-date">
+      </label>
+      <p id="direct-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">付ける</button>
+      <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>
+    </form>
+  </section>
+
+  <!-- 親: 項目の管理 -->
+  <section id="screen-parent-items" class="screen">
+    <h2 class="screen-title">項目の管理</h2>
+    <div id="items-list" class="entry-list"></div>
+    <form id="item-create-form" class="form">
+      <h3>新しい項目</h3>
+      <label>名前<input type="text" id="item-new-name" maxlength="100" required></label>
+      <label>ポイント（マイナス可）<input type="number" id="item-new-points" step="1" required></label>
+      <p id="item-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">追加</button>
+    </form>
+    <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>
+  </section>
+
+  <!-- 親: レート設定 -->
+  <section id="screen-parent-settings" class="screen">
+    <h2 class="screen-title">レート設定</h2>
+    <form id="settings-form" class="form">
+      <label>X ポイント<input type="number" id="settings-rate-x" min="1" step="1" required></label>
+      <label>＝ Y 円<input type="number" id="settings-rate-y" min="1" step="1" required></label>
+      <p id="settings-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">保存</button>
+      <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>
+    </form>
+  </section>
+
+  <!-- 親: アカウントの管理 -->
+  <section id="screen-parent-accounts" class="screen">
+    <h2 class="screen-title">アカウントの管理</h2>
+    <div id="accounts-list" class="entry-list"></div>
+    <form id="child-create-form" class="form">
+      <h3>子供を追加</h3>
+      <label>名前<input type="text" id="new-child-name" maxlength="50" required></label>
+      <label>色<input type="color" id="new-child-color" value="#4a6fa5"></label>
+      <label>PIN（数字4桁）<input type="text" inputmode="numeric" pattern="\d{4}" maxlength="4" id="new-child-pin" required></label>
+      <label>引き継ぎポイント（任意・Famipoi等からの移行用、マイナス可）<input type="number" id="new-child-carryover" step="1"></label>
+      <p id="child-create-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">追加</button>
+    </form>
+    <form id="parent-create-form" class="form">
+      <h3>保護者を追加</h3>
+      <label>ログインID<input type="text" id="new-parent-login-id" maxlength="50" required></label>
+      <label>パスワード（12文字以上）<input type="password" id="new-parent-password" required></label>
+      <p id="parent-create-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">追加</button>
+    </form>
+    <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>
+  </section>
+
+  <!-- 日別明細モーダル -->
+  <div id="day-modal" class="modal" hidden>
+    <div class="modal-content">
+      <h3 id="day-modal-title"></h3>
+      <div id="day-modal-list" class="entry-list"></div>
+      <button type="button" class="secondary-button" id="day-modal-close">閉じる</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

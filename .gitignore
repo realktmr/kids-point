@@ -1,0 +1,9 @@
+# 実データ（子供の名前・PIN ハッシュ・記録）はコミットしない
+data/
+.worktrees/
+*.log
+.env
+
+# 内部向けのメモ（公開しない）
+CLAUDE.md
+tasks/

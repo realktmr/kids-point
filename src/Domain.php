@@ -478,7 +478,10 @@ final class Domain
         } else {
             $rateX = (int) $data['settings']['rate_x'];
             $rateY = (int) $data['settings']['rate_y'];
-            if ($points === null || $points <= 0 || $points % $rateX !== 0) {
+            if ($points === null) {
+                throw new ApiError(400, 'invalid_input', '使う点数を入れてください');
+            }
+            if ($points <= 0 || $points % $rateX !== 0) {
                 throw new ApiError(400, 'invalid_input', "使う点数は{$rateX}の倍数にしてください");
             }
             $usePoints = $points;

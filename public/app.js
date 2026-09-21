@@ -639,6 +639,7 @@ function updateUseFormMode() {
   const select = document.getElementById('use-item-select');
   const manualFields = document.getElementById('use-manual-fields');
   const fixed = document.getElementById('use-item-fixed');
+  document.getElementById('use-points').required = !select.value;
   if (select.value) {
     const opt = select.options[select.selectedIndex];
     manualFields.hidden = true;
@@ -916,8 +917,12 @@ async function loadDirectAddForm() {
     opt.dataset.kind = 'use';
     useGroup.appendChild(opt);
   });
-  itemSelect.appendChild(earnGroup);
-  itemSelect.appendChild(useGroup);
+  if (earnGroup.children.length > 0) {
+    itemSelect.appendChild(earnGroup);
+  }
+  if (useGroup.children.length > 0) {
+    itemSelect.appendChild(useGroup);
+  }
   itemSelect.value = '';
   document.getElementById('direct-points').value = '';
   document.getElementById('direct-points').disabled = false;

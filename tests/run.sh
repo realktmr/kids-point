@@ -814,6 +814,12 @@ http_post 'reject_entry' "$PARENT_JAR" "$PARENT_CSRF" "{\"entry_id\":\"$FREEUSE_
 st=$(http_post 'request_use' "$SHIRO_JAR" "$SHIRO_CSRF" '{"points":15,"memo":"not-multiple"}')
 assert_status "use_items回帰: レートの倍数でない自由入力は拒否される" 400 "$st"
 
+# points も use_item_id も無いときは「倍数にしてください」と混ざらない専用メッセージにする
+st=$(http_post 'request_use' "$SHIRO_JAR" "$SHIRO_CSRF" '{"memo":"x"}')
+assert_status "use_items: pointsもuse_item_idも無い申請→400" 400 "$st"
+NOPOINTS_MESSAGE=$(jf '.message')
+assert_true "use_items: 倍数エラーのメッセージと混ざらない" "$(echo "$NOPOINTS_MESSAGE" | grep -q '倍数' && echo false || echo true)" "message=$NOPOINTS_MESSAGE"
+
 # 並べ替えが効く
 st=$(http_post 'use_items_reorder' "$PARENT_JAR" "$PARENT_CSRF" "{\"ids\":[\"$USEITEM2_ID\",\"$USEITEM1_ID\",\"$USEITEM_EXPENSIVE_ID\"]}")
 assert_status "use_items: 並べ替え" 200 "$st"

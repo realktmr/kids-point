@@ -717,6 +717,165 @@ else
 fi
 
 # ==================================================================
+echo "== つかう項目(use_items): 親が設定し、子がメニューから選んで申請できる =="
+# ==================================================================
+
+# 専用の子アカウントを作り、carryoverで初期残高を50にする
+st=$(http_post 'account_create_child' "$PARENT_JAR" "$PARENT_CSRF" '{"name":"しろう","pin":"4444","carryover_points":50}')
+assert_status "use_items用: 子(しろう)アカウント作成" 200 "$st"
+SHIRO_ID=$(jf '.account.id')
+
+SHIRO_JAR=/tmp/kp_test_jar_shiro
+rm -f "$SHIRO_JAR"
+http_get 'me' "$SHIRO_JAR" >/dev/null
+SHIRO_CSRF0=$(jf '.csrf')
+st=$(http_post 'login_child' "$SHIRO_JAR" "$SHIRO_CSRF0" "{\"child_id\":\"$SHIRO_ID\",\"pin\":\"4444\"}")
+assert_status "use_items用: 子(しろう)ログイン" 200 "$st"
+SHIRO_CSRF=$(jf '.csrf')
+
+# 使用項目を2つ作る（1つは後で無効化）
+st=$(http_post 'use_items_create' "$PARENT_JAR" "$PARENT_CSRF" '{"name":"パケット追加","points":30}')
+assert_status "use_items: 使用項目(パケット追加 30P)を作成" 200 "$st"
+USEITEM1_ID=$(jf '.use_item.id')
+
+st=$(http_post 'use_items_create' "$PARENT_JAR" "$PARENT_CSRF" '{"name":"ゲーム時間延長","points":15}')
+assert_status "use_items: 使用項目(ゲーム時間延長 15P)を作成" 200 "$st"
+USEITEM2_ID=$(jf '.use_item.id')
+
+st=$(http_post 'use_items_update' "$PARENT_JAR" "$PARENT_CSRF" "{\"id\":\"$USEITEM2_ID\",\"active\":false}")
+assert_status "use_items: 2つ目を無効化" 200 "$st"
+
+# 子には有効な項目だけ、親には無効な項目も返る
+st=$(http_get 'use_items' "$SHIRO_JAR")
+assert_status "use_items: 子がuse_itemsを取得" 200 "$st"
+CHILD_HAS_ITEM1=$(jf "[.use_items[] | select(.id==\"$USEITEM1_ID\")] | length")
+CHILD_HAS_ITEM2=$(jf "[.use_items[] | select(.id==\"$USEITEM2_ID\")] | length")
+assert_true "use_items: 子には有効な項目が見える" "$([ "$CHILD_HAS_ITEM1" = "1" ] && echo true || echo false)" "count=$CHILD_HAS_ITEM1"
+assert_true "use_items: 子には無効な項目は見えない" "$([ "$CHILD_HAS_ITEM2" = "0" ] && echo true || echo false)" "count=$CHILD_HAS_ITEM2"
+
+st=$(http_get 'use_items' "$PARENT_JAR")
+PARENT_HAS_ITEM2=$(jf "[.use_items[] | select(.id==\"$USEITEM2_ID\")] | length")
+assert_true "use_items: 親には無効な項目も見える" "$([ "$PARENT_HAS_ITEM2" = "1" ] && echo true || echo false)" "count=$PARENT_HAS_ITEM2"
+
+# pointsが0以下は拒否される
+st=$(http_post 'use_items_create' "$PARENT_JAR" "$PARENT_CSRF" '{"name":"だめ項目","points":0}')
+assert_status "use_items: pointsが0は拒否される" 400 "$st"
+st=$(http_post 'use_items_create' "$PARENT_JAR" "$PARENT_CSRF" '{"name":"だめ項目","points":-5}')
+assert_status "use_items: pointsがマイナスは拒否される" 400 "$st"
+st=$(http_post 'use_items_update' "$PARENT_JAR" "$PARENT_CSRF" "{\"id\":\"$USEITEM1_ID\",\"points\":0}")
+assert_status "use_items: 更新でpoints=0は拒否される" 400 "$st"
+
+# 子は使用項目の管理操作ができない
+st=$(http_post 'use_items_create' "$SHIRO_JAR" "$SHIRO_CSRF" '{"name":"x","points":10}')
+assert_status "use_items: 子がuse_items_create→403" 403 "$st"
+st=$(http_post 'use_items_update' "$SHIRO_JAR" "$SHIRO_CSRF" "{\"id\":\"$USEITEM1_ID\",\"points\":10}")
+assert_status "use_items: 子がuse_items_update→403" 403 "$st"
+st=$(http_post 'use_items_reorder' "$SHIRO_JAR" "$SHIRO_CSRF" "{\"ids\":[\"$USEITEM1_ID\"]}")
+assert_status "use_items: 子がuse_items_reorder→403" 403 "$st"
+
+# 子が使用項目を選んで申請する: pointsが負・yenがnull・item_nameが入る
+st=$(http_post 'request_use' "$SHIRO_JAR" "$SHIRO_CSRF" "{\"use_item_id\":\"$USEITEM1_ID\",\"memo\":\"つかうテスト\"}")
+assert_status "use_items: 子が使用項目で申請" 200 "$st"
+USEREQ1_ID=$(jf '.entry.id')
+USEREQ1_POINTS=$(jf '.entry.points')
+USEREQ1_YEN=$(jf '.entry.yen')
+USEREQ1_ITEMNAME=$(jf '.entry.item_name')
+assert_true "use_items: pointsが-30" "$([ "$USEREQ1_POINTS" = "-30" ] && echo true || echo false)" "points=$USEREQ1_POINTS"
+assert_true "use_items: yenはnull" "$([ "$USEREQ1_YEN" = "null" ] && echo true || echo false)" "yen=$USEREQ1_YEN"
+assert_true "use_items: item_nameが入る" "$([ "$USEREQ1_ITEMNAME" = "パケット追加" ] && echo true || echo false)" "item_name=$USEREQ1_ITEMNAME"
+
+st=$(http_post 'reject_entry' "$PARENT_JAR" "$PARENT_CSRF" "{\"entry_id\":\"$USEREQ1_ID\",\"reason\":\"test-cleanup\"}")
+assert_status "use_items: 申請を却下してクリーンアップ" 200 "$st"
+
+# 無効・存在しない使用項目を指定すると400
+st=$(http_post 'request_use' "$SHIRO_JAR" "$SHIRO_CSRF" '{"use_item_id":"no-such-use-item","memo":"x"}')
+assert_status "use_items: 存在しないuse_item_idで申請→400" 400 "$st"
+st=$(http_post 'request_use' "$SHIRO_JAR" "$SHIRO_CSRF" "{\"use_item_id\":\"$USEITEM2_ID\",\"memo\":\"x\"}")
+assert_status "use_items: 無効化された使用項目で申請→400" 400 "$st"
+
+# 残高不足の使用項目を指定すると400 insufficient_balance（しろうの残高は50）
+st=$(http_post 'use_items_create' "$PARENT_JAR" "$PARENT_CSRF" '{"name":"高額商品","points":100}')
+assert_status "use_items: 残高不足テスト用の高額項目を作成" 200 "$st"
+USEITEM_EXPENSIVE_ID=$(jf '.use_item.id')
+
+st=$(http_post 'request_use' "$SHIRO_JAR" "$SHIRO_CSRF" "{\"use_item_id\":\"$USEITEM_EXPENSIVE_ID\",\"memo\":\"x\"}")
+assert_status "use_items: 残高不足の使用項目申請→400" 400 "$st"
+USE_INSUFFICIENT_ERROR=$(jf '.error')
+assert_true "use_items: エラーコードがinsufficient_balance" "$([ "$USE_INSUFFICIENT_ERROR" = "insufficient_balance" ] && echo true || echo false)" "error=$USE_INSUFFICIENT_ERROR"
+
+# 自由入力の回帰: pointsだけの申請は今までどおり動き、yenが入る
+st=$(http_post 'request_use' "$SHIRO_JAR" "$SHIRO_CSRF" '{"points":20,"memo":"free-input"}')
+assert_status "use_items回帰: 自由入力の申請は今までどおり動く" 200 "$st"
+FREEUSE_ID=$(jf '.entry.id')
+FREEUSE_YEN=$(jf '.entry.yen')
+assert_true "use_items回帰: yenが入る(20P=16円)" "$([ "$FREEUSE_YEN" = "16" ] && echo true || echo false)" "yen=$FREEUSE_YEN"
+http_post 'reject_entry' "$PARENT_JAR" "$PARENT_CSRF" "{\"entry_id\":\"$FREEUSE_ID\",\"reason\":\"test-cleanup\"}" >/dev/null
+
+st=$(http_post 'request_use' "$SHIRO_JAR" "$SHIRO_CSRF" '{"points":15,"memo":"not-multiple"}')
+assert_status "use_items回帰: レートの倍数でない自由入力は拒否される" 400 "$st"
+
+# 並べ替えが効く
+st=$(http_post 'use_items_reorder' "$PARENT_JAR" "$PARENT_CSRF" "{\"ids\":[\"$USEITEM2_ID\",\"$USEITEM1_ID\",\"$USEITEM_EXPENSIVE_ID\"]}")
+assert_status "use_items: 並べ替え" 200 "$st"
+st=$(http_get 'use_items' "$PARENT_JAR")
+REORDERED_FIRST=$(jf '.use_items[0].id')
+assert_true "use_items: 並べ替え後の先頭が指定通り" "$([ "$REORDERED_FIRST" = "$USEITEM2_ID" ] && echo true || echo false)" "first=$REORDERED_FIRST"
+
+# 親の「直接付ける」からも使用項目で引ける（即approved・残高が即座に減る）
+st=$(http_get 'state' "$SHIRO_JAR")
+BAL_BEFORE_DIRECT_USE=$(jf '.balance')
+
+st=$(http_post 'direct_add' "$PARENT_JAR" "$PARENT_CSRF" "{\"child_id\":\"$SHIRO_ID\",\"use_item_id\":\"$USEITEM1_ID\",\"memo\":\"direct-use\"}")
+assert_status "use_items: direct_addにuse_item_idを渡すと成功" 200 "$st"
+DIRECTUSE_STATUS=$(jf '.entry.status')
+assert_true "use_items: direct_addのuse_itemは即approved" "$([ "$DIRECTUSE_STATUS" = "approved" ] && echo true || echo false)" "status=$DIRECTUSE_STATUS"
+
+st=$(http_get 'state' "$SHIRO_JAR")
+BAL_AFTER_DIRECT_USE=$(jf '.balance')
+EXPECTED_BAL_AFTER_DIRECT_USE=$((BAL_BEFORE_DIRECT_USE - 30))
+assert_true "use_items: direct_addで残高が即座に減る" "$([ "$BAL_AFTER_DIRECT_USE" = "$EXPECTED_BAL_AFTER_DIRECT_USE" ] && echo true || echo false)" "before=$BAL_BEFORE_DIRECT_USE after=$BAL_AFTER_DIRECT_USE"
+
+# item_idとuse_item_idの同時指定は400
+st=$(http_post 'direct_add' "$PARENT_JAR" "$PARENT_CSRF" "{\"child_id\":\"$SHIRO_ID\",\"item_id\":\"$ITEM_PLUS_ID\",\"use_item_id\":\"$USEITEM1_ID\",\"memo\":\"x\"}")
+assert_status "use_items: item_idとuse_item_idの同時指定→400" 400 "$st"
+
+# carryoverとuse_item_idの同時指定は400
+st=$(http_post 'direct_add' "$PARENT_JAR" "$PARENT_CSRF" "{\"child_id\":\"$SHIRO_ID\",\"use_item_id\":\"$USEITEM1_ID\",\"carryover\":true,\"memo\":\"x\"}")
+assert_status "use_items: carryoverとuse_item_idの同時指定→400" 400 "$st"
+
+# 残高不足でdirect_add→400
+st=$(http_post 'direct_add' "$PARENT_JAR" "$PARENT_CSRF" "{\"child_id\":\"$SHIRO_ID\",\"use_item_id\":\"$USEITEM_EXPENSIVE_ID\",\"memo\":\"x\"}")
+assert_status "use_items: direct_addで残高不足→400" 400 "$st"
+DIRECT_INSUFFICIENT_ERROR=$(jf '.error')
+assert_true "use_items: direct_addのエラーコードがinsufficient_balance" "$([ "$DIRECT_INSUFFICIENT_ERROR" = "insufficient_balance" ] && echo true || echo false)" "error=$DIRECT_INSUFFICIENT_ERROR"
+
+# ==================================================================
+echo "== 移行不要の裏取り: use_itemsキーが無い既存形式のJSONでも動く =="
+# ==================================================================
+
+python3 - "$DATA_DIR/kids-point.json" <<'PYEOF'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    data = json.load(f)
+data.pop('use_items', None)
+data.get('seq', {}).pop('use_items', None)
+with open(path, 'w') as f:
+    json.dump(data, f)
+PYEOF
+
+st=$(http_get 'use_items' "$PARENT_JAR")
+assert_status "移行不要: use_itemsキーが無くてもGETが200" 200 "$st"
+LEGACY_COUNT=$(jf '.use_items | length')
+assert_true "移行不要: use_itemsは空配列として扱われる" "$([ "$LEGACY_COUNT" = "0" ] && echo true || echo false)" "count=$LEGACY_COUNT"
+
+st=$(http_post 'use_items_create' "$PARENT_JAR" "$PARENT_CSRF" '{"name":"移行後の項目","points":5}')
+assert_status "移行不要: use_itemsキーが無い状態からでも1件作れる" 200 "$st"
+LEGACY_ITEM_ID=$(jf '.use_item.id')
+LEGACY_ITEM_ID_PREFIX=$(echo "$LEGACY_ITEM_ID" | cut -c1-2)
+assert_true "移行不要: 新しいIDはui接頭辞で採番される" "$([ "$LEGACY_ITEM_ID_PREFIX" = "ui" ] && echo true || echo false)" "id=$LEGACY_ITEM_ID"
+
+# ==================================================================
 echo ""
 echo "===================================="
 echo "PASS=$PASS FAIL=$FAIL"

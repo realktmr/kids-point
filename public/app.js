@@ -186,7 +186,11 @@ function statusLabel(s) {
 
 function entryTitle(e) {
   if (e.type === 'use') {
-    return 'つかう ' + Math.abs(e.points) + 'P（' + e.yen + '円）';
+    if (e.item_name) {
+      return 'つかう ' + e.item_name + ' ' + Math.abs(e.points) + 'P';
+    }
+    const yenPart = e.yen === null || e.yen === undefined ? '' : '（' + e.yen + '円）';
+    return 'つかう ' + Math.abs(e.points) + 'P' + yenPart;
   }
   if (e.type === 'carryover') {
     return '繰越';
@@ -609,8 +613,45 @@ async function loadUseForm() {
   document.getElementById('use-yen').textContent = '0';
   document.getElementById('use-memo').value = '';
   hideError('use-error');
+
+  const useItemsRes = await api('use_items');
+  const select = document.getElementById('use-item-select');
+  select.innerHTML = '';
+  const freeOpt = document.createElement('option');
+  freeOpt.value = '';
+  freeOpt.textContent = '自由入力（げんきん）';
+  select.appendChild(freeOpt);
+  useItemsRes.use_items.forEach(function (it) {
+    const opt = document.createElement('option');
+    opt.value = it.id;
+    opt.textContent = it.name + ' ' + it.points + 'P';
+    opt.dataset.points = String(it.points);
+    select.appendChild(opt);
+  });
+  document.getElementById('use-item-select-wrap').hidden = useItemsRes.use_items.length === 0;
+  select.value = '';
+  updateUseFormMode();
+
   showScreen('child-use');
 }
+
+function updateUseFormMode() {
+  const select = document.getElementById('use-item-select');
+  const manualFields = document.getElementById('use-manual-fields');
+  const fixed = document.getElementById('use-item-fixed');
+  if (select.value) {
+    const opt = select.options[select.selectedIndex];
+    manualFields.hidden = true;
+    fixed.hidden = false;
+    fixed.textContent = opt.dataset.points + 'P つかいます';
+  } else {
+    manualFields.hidden = false;
+    fixed.hidden = true;
+    fixed.textContent = '';
+  }
+}
+
+document.getElementById('use-item-select').addEventListener('change', updateUseFormMode);
 
 document.getElementById('use-points').addEventListener('input', function () {
   const v = parseInt(this.value || '0', 10);
@@ -622,14 +663,15 @@ document.getElementById('use-points').addEventListener('input', function () {
 document.getElementById('use-form').addEventListener('submit', async function (e) {
   e.preventDefault();
   hideError('use-error');
+  const useItemId = document.getElementById('use-item-select').value;
+  const body = { memo: document.getElementById('use-memo').value };
+  if (useItemId) {
+    body.use_item_id = useItemId;
+  } else {
+    body.points = parseInt(document.getElementById('use-points').value, 10);
+  }
   try {
-    await api('request_use', {
-      method: 'POST',
-      body: {
-        points: parseInt(document.getElementById('use-points').value, 10),
-        memo: document.getElementById('use-memo').value,
-      },
-    });
+    await api('request_use', { method: 'POST', body: body });
     toast('申請しました');
     await loadChildHome();
   } catch (err) {
@@ -847,8 +889,11 @@ async function loadDirectAddForm() {
   });
 
   const itemsRes = await api('items');
+  const useItemsRes = await api('use_items');
   const itemSelect = document.getElementById('direct-item-select');
   itemSelect.innerHTML = '<option value="">－ 手入力する －</option>';
+  const earnGroup = document.createElement('optgroup');
+  earnGroup.label = 'もらう項目';
   itemsRes.items.forEach(function (it) {
     if (!it.active) {
       return;
@@ -856,8 +901,23 @@ async function loadDirectAddForm() {
     const opt = document.createElement('option');
     opt.value = it.id;
     opt.textContent = it.name + '（' + (it.points >= 0 ? '+' : '') + it.points + 'P）';
-    itemSelect.appendChild(opt);
+    opt.dataset.kind = 'earn';
+    earnGroup.appendChild(opt);
   });
+  const useGroup = document.createElement('optgroup');
+  useGroup.label = 'つかう項目';
+  useItemsRes.use_items.forEach(function (it) {
+    if (!it.active) {
+      return;
+    }
+    const opt = document.createElement('option');
+    opt.value = it.id;
+    opt.textContent = it.name + '（' + it.points + 'P）';
+    opt.dataset.kind = 'use';
+    useGroup.appendChild(opt);
+  });
+  itemSelect.appendChild(earnGroup);
+  itemSelect.appendChild(useGroup);
   itemSelect.value = '';
   document.getElementById('direct-points').value = '';
   document.getElementById('direct-points').disabled = false;
@@ -883,14 +943,20 @@ document.getElementById('direct-item-select').addEventListener('change', functio
 document.getElementById('direct-add-form').addEventListener('submit', async function (e) {
   e.preventDefault();
   hideError('direct-error');
-  const itemId = document.getElementById('direct-item-select').value;
+  const itemSelect = document.getElementById('direct-item-select');
+  const itemId = itemSelect.value;
   const body = {
     child_id: document.getElementById('direct-child-select').value,
     memo: document.getElementById('direct-memo').value,
     done_date: document.getElementById('direct-date').value,
   };
   if (itemId) {
-    body.item_id = itemId;
+    const kind = itemSelect.options[itemSelect.selectedIndex].dataset.kind;
+    if (kind === 'use') {
+      body.use_item_id = itemId;
+    } else {
+      body.item_id = itemId;
+    }
   } else {
     body.points = parseInt(document.getElementById('direct-points').value, 10);
     body.carryover = document.getElementById('direct-carryover').checked;
@@ -1032,6 +1098,137 @@ document.getElementById('item-create-form').addEventListener('submit', async fun
     await loadItemsManage();
   } catch (err) {
     showError('item-error', err.message);
+  }
+});
+
+// ---------------- 親: つかう項目の管理 ----------------
+
+async function loadUseItemsManage() {
+  const res = await api('use_items');
+  const container = document.getElementById('use-items-list');
+  container.innerHTML = '';
+  res.use_items.forEach(function (it, idx) {
+    const card = document.createElement('div');
+    card.className = 'entry-card';
+    const top = document.createElement('div');
+    top.className = 'entry-top';
+    const name = document.createElement('span');
+    name.textContent = it.name + (it.active ? '' : '（無効）');
+    const pts = document.createElement('span');
+    pts.className = 'entry-points minus';
+    pts.textContent = it.points + 'P';
+    top.appendChild(name);
+    top.appendChild(pts);
+    card.appendChild(top);
+
+    const actions = document.createElement('div');
+    actions.className = 'entry-actions';
+
+    const moveUp = document.createElement('button');
+    moveUp.type = 'button';
+    moveUp.className = 'secondary-button';
+    moveUp.textContent = '↑';
+    moveUp.disabled = idx === 0;
+    moveUp.addEventListener('click', async function () {
+      const ids = res.use_items.map(function (i) { return i.id; });
+      const tmp = ids[idx];
+      ids[idx] = ids[idx - 1];
+      ids[idx - 1] = tmp;
+      try {
+        await api('use_items_reorder', { method: 'POST', body: { ids: ids } });
+        await loadUseItemsManage();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+
+    const moveDown = document.createElement('button');
+    moveDown.type = 'button';
+    moveDown.className = 'secondary-button';
+    moveDown.textContent = '↓';
+    moveDown.disabled = idx === res.use_items.length - 1;
+    moveDown.addEventListener('click', async function () {
+      const ids = res.use_items.map(function (i) { return i.id; });
+      const tmp = ids[idx];
+      ids[idx] = ids[idx + 1];
+      ids[idx + 1] = tmp;
+      try {
+        await api('use_items_reorder', { method: 'POST', body: { ids: ids } });
+        await loadUseItemsManage();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'secondary-button';
+    editBtn.textContent = '編集';
+    editBtn.addEventListener('click', async function () {
+      const newName = window.prompt('名前', it.name);
+      if (newName === null) {
+        return;
+      }
+      const newPointsStr = window.prompt('ポイント（1以上）', String(it.points));
+      if (newPointsStr === null) {
+        return;
+      }
+      const newPoints = parseInt(newPointsStr, 10);
+      if (isNaN(newPoints) || newPoints < 1) {
+        toast('ポイントが不正です');
+        return;
+      }
+      try {
+        await api('use_items_update', { method: 'POST', body: { id: it.id, name: newName, points: newPoints } });
+        await loadUseItemsManage();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'secondary-button';
+    toggleBtn.textContent = it.active ? '使わなくする' : '使うようにする';
+    toggleBtn.addEventListener('click', async function () {
+      try {
+        await api('use_items_update', { method: 'POST', body: { id: it.id, active: !it.active } });
+        await loadUseItemsManage();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+
+    actions.appendChild(moveUp);
+    actions.appendChild(moveDown);
+    actions.appendChild(editBtn);
+    actions.appendChild(toggleBtn);
+    card.appendChild(actions);
+    container.appendChild(card);
+  });
+  if (!res.use_items.length) {
+    container.textContent = '項目がありません';
+  }
+  showScreen('parent-use-items');
+}
+
+document.getElementById('use-item-create-form').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  hideError('use-item-error');
+  try {
+    await api('use_items_create', {
+      method: 'POST',
+      body: {
+        name: document.getElementById('use-item-new-name').value,
+        points: parseInt(document.getElementById('use-item-new-points').value, 10),
+      },
+    });
+    document.getElementById('use-item-new-name').value = '';
+    document.getElementById('use-item-new-points').value = '';
+    toast('追加しました');
+    await loadUseItemsManage();
+  } catch (err) {
+    showError('use-item-error', err.message);
   }
 });
 
@@ -1228,6 +1425,9 @@ async function handleNav(name) {
         break;
       case 'parent-items':
         await loadItemsManage();
+        break;
+      case 'parent-use-items':
+        await loadUseItemsManage();
         break;
       case 'parent-settings':
         await loadSettingsForm();

@@ -159,6 +159,10 @@ function handleGet(Store $store, string $action): array
             Auth::requireLogin();
             $data = $store->read();
             return ['ok' => true, 'items' => Domain::itemsFor($data, (string) $_SESSION['role'])];
+        case 'use_items':
+            Auth::requireLogin();
+            $data = $store->read();
+            return ['ok' => true, 'use_items' => Domain::useItemsFor($data, (string) $_SESSION['role'])];
         case 'settings':
             Auth::requireLogin();
             $data = $store->read();
@@ -258,6 +262,40 @@ function handlePost(Store $store, string $action, array $body): array
                     throw new ApiError(400, 'invalid_input', 'ids が不正です');
                 }
                 Domain::reorderItems($data, $ids);
+                return ['data' => $data, 'result' => ['ok' => true]];
+            });
+        case 'use_items_create':
+            Auth::requireParent();
+            return $store->mutate(function (array $data) use ($store, $body) {
+                $item = Domain::createUseItem(
+                    $data,
+                    $store,
+                    trim(Http::requireString($body, 'name', 100)),
+                    Http::requireInt($body, 'points'),
+                    (bool) ($body['active'] ?? true)
+                );
+                return ['data' => $data, 'result' => ['ok' => true, 'use_item' => $item]];
+            });
+        case 'use_items_update':
+            Auth::requireParent();
+            return $store->mutate(function (array $data) use ($body) {
+                $item = Domain::updateUseItem(
+                    $data,
+                    Http::requireString($body, 'id', 50),
+                    isset($body['name']) ? trim((string) $body['name']) : null,
+                    Http::optionalInt($body, 'points'),
+                    isset($body['active']) ? (bool) $body['active'] : null
+                );
+                return ['data' => $data, 'result' => ['ok' => true, 'use_item' => $item]];
+            });
+        case 'use_items_reorder':
+            Auth::requireParent();
+            return $store->mutate(function (array $data) use ($body) {
+                $ids = $body['ids'] ?? null;
+                if (!is_array($ids)) {
+                    throw new ApiError(400, 'invalid_input', 'ids が不正です');
+                }
+                Domain::reorderUseItems($data, $ids);
                 return ['data' => $data, 'result' => ['ok' => true]];
             });
         case 'settings_update':
@@ -438,10 +476,14 @@ function handleRequestEarn(Store $store, array $body): array
 function handleRequestUse(Store $store, array $body): array
 {
     $childId = Auth::requireChild();
-    $points = Http::requireInt($body, 'points');
+    $useItemId = isset($body['use_item_id']) && $body['use_item_id'] !== '' ? (string) $body['use_item_id'] : null;
+    if ($useItemId !== null && mb_strlen($useItemId) > 50) {
+        throw new ApiError(400, 'invalid_input', 'use_item_id が不正です');
+    }
+    $points = Http::optionalInt($body, 'points');
     $memo = Http::optionalString($body, 'memo', 500);
-    return $store->mutate(function (array $data) use ($store, $childId, $points, $memo) {
-        $entry = Domain::createUseRequest($data, $store, $childId, $points, $memo);
+    return $store->mutate(function (array $data) use ($store, $childId, $useItemId, $points, $memo) {
+        $entry = Domain::createUseRequest($data, $store, $childId, $useItemId, $points, $memo);
         return ['data' => $data, 'result' => ['ok' => true, 'entry' => $entry]];
     });
 }
@@ -496,12 +538,13 @@ function handleDirectAdd(Store $store, array $body): array
     $parentId = (string) $_SESSION['user_id'];
     $childId = Http::requireString($body, 'child_id', 50);
     $itemId = isset($body['item_id']) && $body['item_id'] !== '' ? (string) $body['item_id'] : null;
+    $useItemId = isset($body['use_item_id']) && $body['use_item_id'] !== '' ? (string) $body['use_item_id'] : null;
     $points = Http::optionalInt($body, 'points');
     $memo = Http::optionalString($body, 'memo', 500);
     $doneDate = isset($body['done_date']) && $body['done_date'] !== '' ? (string) $body['done_date'] : null;
     $carryover = !empty($body['carryover']);
-    return $store->mutate(function (array $data) use ($store, $parentId, $childId, $itemId, $points, $memo, $doneDate, $carryover) {
-        $entry = Domain::directAdd($data, $store, $parentId, $childId, $itemId, $points, $memo, $doneDate, $carryover);
+    return $store->mutate(function (array $data) use ($store, $parentId, $childId, $itemId, $useItemId, $points, $memo, $doneDate, $carryover) {
+        $entry = Domain::directAdd($data, $store, $parentId, $childId, $itemId, $points, $memo, $doneDate, $carryover, $useItemId);
         return ['data' => $data, 'result' => ['ok' => true, 'entry' => $entry]];
     });
 }

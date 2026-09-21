@@ -54,11 +54,12 @@ final class Store
             'schema_version' => 1,
             'users' => [],
             'items' => [],
+            'use_items' => [],
             'entries' => [],
             'settings' => ['rate_x' => 1, 'rate_y' => 1],
             'login_failures' => [],
             'remember_tokens' => [],
-            'seq' => ['users' => 0, 'items' => 0, 'entries' => 0],
+            'seq' => ['users' => 0, 'items' => 0, 'entries' => 0, 'use_items' => 0],
         ];
     }
 
@@ -176,6 +177,7 @@ final class Store
         $prefix = match ($collection) {
             'users' => 'u',
             'items' => 'i',
+            'use_items' => 'ui',
             'entries' => 'e',
             default => 'x',
         };

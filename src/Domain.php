@@ -128,6 +128,73 @@ final class Domain
         }
     }
 
+    // ---- use_items（つかう項目。もらう項目とは別コレクション） ----
+
+    public static function useItemsFor(array $data, string $role): array
+    {
+        $items = [];
+        foreach ($data['use_items'] as $id => $it) {
+            if ($role === 'child' && !$it['active']) {
+                continue;
+            }
+            $items[] = $it + ['id' => $id];
+        }
+        usort($items, fn ($a, $b) => ($a['order'] ?? 0) <=> ($b['order'] ?? 0));
+        return $items;
+    }
+
+    public static function createUseItem(array &$data, Store $store, string $name, int $points, bool $active = true): array
+    {
+        if ($name === '' || mb_strlen($name) > 100) {
+            throw new ApiError(400, 'invalid_input', '項目名が不正です');
+        }
+        if ($points < 1) {
+            throw new ApiError(400, 'invalid_input', 'ポイントは1以上にしてください');
+        }
+        $id = $store->nextId($data, 'use_items');
+        $maxOrder = 0;
+        foreach ($data['use_items'] as $it) {
+            $maxOrder = max($maxOrder, $it['order'] ?? 0);
+        }
+        $item = ['name' => $name, 'points' => $points, 'active' => $active, 'order' => $maxOrder + 1];
+        $data['use_items'][$id] = $item;
+        return $item + ['id' => $id];
+    }
+
+    public static function updateUseItem(array &$data, string $id, ?string $name, ?int $points, ?bool $active): array
+    {
+        if (!isset($data['use_items'][$id])) {
+            throw new ApiError(404, 'not_found', '項目が見つかりません');
+        }
+        if ($name !== null) {
+            if ($name === '' || mb_strlen($name) > 100) {
+                throw new ApiError(400, 'invalid_input', '項目名が不正です');
+            }
+            $data['use_items'][$id]['name'] = $name;
+        }
+        if ($points !== null) {
+            if ($points < 1) {
+                throw new ApiError(400, 'invalid_input', 'ポイントは1以上にしてください');
+            }
+            $data['use_items'][$id]['points'] = $points;
+        }
+        if ($active !== null) {
+            $data['use_items'][$id]['active'] = $active;
+        }
+        return $data['use_items'][$id] + ['id' => $id];
+    }
+
+    public static function reorderUseItems(array &$data, array $ids): void
+    {
+        $order = 1;
+        foreach ($ids as $id) {
+            if (!isset($data['use_items'][$id])) {
+                throw new ApiError(400, 'invalid_input', "不明な項目 {$id}");
+            }
+            $data['use_items'][$id]['order'] = $order++;
+        }
+    }
+
     // ---- settings ----
 
     public static function updateSettings(array &$data, int $rateX, int $rateY): void
@@ -393,26 +460,44 @@ final class Domain
         return $entry + ['id' => $id];
     }
 
-    public static function createUseRequest(array &$data, Store $store, string $childId, int $points, string $memo): array
+    public static function createUseRequest(array &$data, Store $store, string $childId, ?string $useItemId, ?int $points, string $memo): array
     {
-        $rateX = (int) $data['settings']['rate_x'];
-        $rateY = (int) $data['settings']['rate_y'];
-        if ($points <= 0 || $points % $rateX !== 0) {
-            throw new ApiError(400, 'invalid_input', "使う点数は{$rateX}の倍数にしてください");
+        $nowIso = self::now()->format(DATE_ATOM);
+        if ($useItemId !== null) {
+            $useItem = $data['use_items'][$useItemId] ?? null;
+            if (!$useItem || !$useItem['active']) {
+                throw new ApiError(400, 'invalid_input', '選べない項目です');
+            }
+            $usePoints = $useItem['points'];
+            $entry = [
+                'item_id' => $useItemId,
+                'item_name' => $useItem['name'],
+                'points' => -$usePoints,
+                'memo' => mb_substr($memo, 0, 500),
+            ] + self::baseEntry($childId, 'use', $childId, $nowIso);
+        } else {
+            $rateX = (int) $data['settings']['rate_x'];
+            $rateY = (int) $data['settings']['rate_y'];
+            if ($points === null) {
+                throw new ApiError(400, 'invalid_input', '使う点数を入れてください');
+            }
+            if ($points <= 0 || $points % $rateX !== 0) {
+                throw new ApiError(400, 'invalid_input', "使う点数は{$rateX}の倍数にしてください");
+            }
+            $usePoints = $points;
+            $yen = intdiv($points, $rateX) * $rateY;
+            $entry = [
+                'points' => -$usePoints,
+                'yen' => $yen,
+                'rate_x' => $rateX,
+                'rate_y' => $rateY,
+                'memo' => mb_substr($memo, 0, 500),
+            ] + self::baseEntry($childId, 'use', $childId, $nowIso);
         }
         $available = self::availableForUse($data, $childId);
-        if ($points > $available) {
+        if ($usePoints > $available) {
             throw new ApiError(400, 'insufficient_balance', '使えるポイントを超えています');
         }
-        $nowIso = self::now()->format(DATE_ATOM);
-        $yen = intdiv($points, $rateX) * $rateY;
-        $entry = [
-            'points' => -$points,
-            'yen' => $yen,
-            'rate_x' => $rateX,
-            'rate_y' => $rateY,
-            'memo' => mb_substr($memo, 0, 500),
-        ] + self::baseEntry($childId, 'use', $childId, $nowIso);
         $id = $store->nextId($data, 'entries');
         $data['entries'][$id] = $entry;
         return $entry + ['id' => $id];
@@ -489,10 +574,16 @@ final class Domain
         $data['entries'][$entryId] = $e;
     }
 
-    public static function directAdd(array &$data, Store $store, string $parentId, string $childId, ?string $itemId, ?int $manualPoints, string $memo, ?string $doneDate, bool $carryover = false): array
+    public static function directAdd(array &$data, Store $store, string $parentId, string $childId, ?string $itemId, ?int $manualPoints, string $memo, ?string $doneDate, bool $carryover = false, ?string $useItemId = null): array
     {
         if (!isset($data['users'][$childId]) || $data['users'][$childId]['role'] !== 'child') {
             throw new ApiError(400, 'invalid_input', '子が不正です');
+        }
+        if ($itemId !== null && $useItemId !== null) {
+            throw new ApiError(400, 'invalid_input', '項目の指定が重複しています');
+        }
+        if ($useItemId !== null && $carryover) {
+            throw new ApiError(400, 'invalid_input', '繰越は手入力のときだけ使えます');
         }
         $today = self::today();
         $date = $doneDate ?? $today;
@@ -501,7 +592,23 @@ final class Domain
         }
         $nowIso = self::now()->format(DATE_ATOM);
 
-        if ($itemId !== null) {
+        if ($useItemId !== null) {
+            $useItem = $data['use_items'][$useItemId] ?? null;
+            if (!$useItem || !$useItem['active']) {
+                throw new ApiError(400, 'invalid_input', '選べない項目です');
+            }
+            $points = -$useItem['points'];
+            if (self::balance($data, $childId) < abs($points)) {
+                throw new ApiError(400, 'insufficient_balance', '残高が足りないため付けられません');
+            }
+            $entry = [
+                'item_id' => $useItemId,
+                'item_name' => $useItem['name'],
+                'points' => $points,
+                'memo' => mb_substr($memo, 0, 500),
+                'done_date' => $date,
+            ] + self::baseEntry($childId, 'use', $parentId, $nowIso);
+        } elseif ($itemId !== null) {
             if ($carryover) {
                 throw new ApiError(400, 'invalid_input', '繰越は手入力のときだけ使えます');
             }

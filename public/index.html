@@ -106,10 +106,18 @@
     <h2 class="screen-title">つかう申請</h2>
     <p>使えるポイント: <span id="use-available">0</span>P</p>
     <form id="use-form" class="form">
-      <label>使うポイント
-        <input type="number" id="use-points" min="1" step="1" required>
+      <label id="use-item-select-wrap">なにに使う？
+        <select id="use-item-select">
+          <option value="">自由入力（げんきん）</option>
+        </select>
       </label>
-      <p>＝ <span id="use-yen">0</span>円</p>
+      <div id="use-manual-fields">
+        <label>使うポイント
+          <input type="number" id="use-points" min="1" step="1">
+        </label>
+        <p>＝ <span id="use-yen">0</span>円</p>
+      </div>
+      <p id="use-item-fixed" class="calendar-summary" hidden></p>
       <label>ひとこと（任意）
         <textarea id="use-memo" maxlength="500"></textarea>
       </label>
@@ -137,7 +145,8 @@
       <button type="button" class="nav-button" data-nav="parent-calendar">カレンダー</button>
       <button type="button" class="nav-button" data-nav="parent-search">検索</button>
       <button type="button" class="nav-button" data-nav="parent-direct-add">直接付ける</button>
-      <button type="button" class="nav-button" data-nav="parent-items">項目の管理</button>
+      <button type="button" class="nav-button" data-nav="parent-items">もらう項目の管理</button>
+      <button type="button" class="nav-button" data-nav="parent-use-items">つかう項目の管理</button>
       <button type="button" class="nav-button" data-nav="parent-settings">レート設定</button>
       <button type="button" class="nav-button" data-nav="parent-accounts">アカウントの管理</button>
     </nav>
@@ -224,6 +233,20 @@
       <label>名前<input type="text" id="item-new-name" maxlength="100" required></label>
       <label>ポイント（マイナス可）<input type="number" id="item-new-points" step="1" required></label>
       <p id="item-error" class="error-text" hidden></p>
+      <button type="submit" class="primary-button">追加</button>
+    </form>
+    <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>
+  </section>
+
+  <!-- 親: つかう項目の管理 -->
+  <section id="screen-parent-use-items" class="screen">
+    <h2 class="screen-title">つかう項目の管理</h2>
+    <div id="use-items-list" class="entry-list"></div>
+    <form id="use-item-create-form" class="form">
+      <h3>新しい使用項目</h3>
+      <label>名前<input type="text" id="use-item-new-name" maxlength="100" required></label>
+      <label>ポイント（1以上）<input type="number" id="use-item-new-points" min="1" step="1" required></label>
+      <p id="use-item-error" class="error-text" hidden></p>
       <button type="submit" class="primary-button">追加</button>
     </form>
     <button type="button" class="secondary-button" data-nav="parent-home">もどる</button>

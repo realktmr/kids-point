@@ -893,4 +893,20 @@ if [ "$FAIL" -gt 0 ]; then
   exit 1
 fi
 echo "全テスト成功"
+
+# ==================================================================
+echo ""
+echo "== E2E (Playwright, ブラウザ操作) =="
+# ==================================================================
+E2E_STATUS=0
+if [ -x "$ROOT_DIR/node_modules/.bin/playwright" ]; then
+  (cd "$ROOT_DIR" && npx playwright test) || E2E_STATUS=$?
+else
+  echo "  SKIP: node_modules が無いため実行をスキップ（先に npm install してください）"
+fi
+
+if [ "$E2E_STATUS" -ne 0 ]; then
+  echo "E2Eテストが失敗しました"
+  exit 1
+fi
 exit 0

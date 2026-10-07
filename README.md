@@ -275,7 +275,7 @@ bash tests/run.sh
 
 一時データディレクトリを作り、`php -S`（4ワーカー）を自動で起動・停止しながら、権限・CSRF・PINロック・残高とカレンダーの集計・利用申請の上限・同時書き込みなど一式を検証します。`php -l` と `node --check public/app.js` も同じスクリプトの中で実行します。1コマンドで完結し、失敗すると終了コードが0以外になります。
 
-`node_modules`（`npm install` 済み）があれば、同じ `tests/run.sh` の最後にブラウザ操作の E2E テスト（Playwright、`tests/e2e/`）も自動で実行されます。E2E だけ単独で動かすには `npm install && npx playwright test` です（使い捨てのデータディレクトリで `php -S` を自動起動し、本番 URL へは一切アクセスしません）。
+`node_modules`（`npm install` 済み）があれば、同じ `tests/run.sh` の最後にブラウザ操作の E2E テスト（Playwright、`tests/e2e/`）も自動で実行されます。E2E だけ単独で動かすには `npm install && npx playwright test` です（使い捨てのデータディレクトリで `php -S` を自動起動し、本番 URL へは一切アクセスしません）。Chromium の実行パスは既定で `/opt/pw-browsers/chromium`（無ければ Playwright 既定のブラウザ）を使うので、別の場所にある場合は環境変数 `PW_CHROMIUM_PATH` でパスを指定してください。
 
 ## ライセンス
 
